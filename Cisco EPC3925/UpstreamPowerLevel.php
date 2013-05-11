@@ -1,30 +1,14 @@
 <?php
 
-class Cisco_EPC3925_Upstream_Power_Level implements \PhuninNode\Interfaces\Plugin {
+require_once 'AbstractCiscoEPC3925.php';
+
+class Cisco_EPC3925_Upstream_Power_Level extends AbstractCiscoEPC3925 implements \PhuninNode\Interfaces\Plugin {
     
-    const CISCO_EPC3925_STATUS_URL = 'http://192.168.100.1/Docsis_system.asp';
-    const DNS_SERVER_IP = '8.8.8.8';
-    const STATUS_TABLE = 3;
+    const STATUS_TABLE = 4;
     const STATUS_COLUMN = 2;
     
-    private $node;
-    private $loop;
-    private $configuration;
-    
-    public function __construct($loop) {
-        $this->loop = $loop;
-        
-        $dnsResolverFactory = new \React\Dns\Resolver\Factory();
-        $this->dnsResolver = $dnsResolverFactory->createCached(self::DNS_SERVER_IP, $this->loop);
-        $this->factory = new \React\HttpClient\Factory();
-    }
-    
-    public function setNode(\PhuninNode\Node $node) {
-        $this->node = $node;
-    }
-    
     public function getSlug() {
-        return 'cisco_epc3925_upstream_power_level';
+        return 'cisco_epc3925_upstream_power_level_channels';
     }
     
     public function getConfiguration(\React\Promise\DeferredResolver $deferredResolver) {
@@ -45,8 +29,8 @@ class Cisco_EPC3925_Upstream_Power_Level implements \PhuninNode\Interfaces\Plugi
         $deferred->promise()->then(function($channels) use ($deferredResolver, $configuration) {
             
             foreach ($channels as $channel => $value) {
-                $this->configuration->setPair($channel . '.min', 6);
-                $this->configuration->setPair($channel . '.max', 12);
+                $this->configuration->setPair($channel . '.min', 47);
+                $this->configuration->setPair($channel . '.max', 54);
                 $this->configuration->setPair($channel . '.label', $channel);
                 $this->configuration->setPair($channel . '.type', 'GAUGE');
             }
@@ -73,42 +57,6 @@ class Cisco_EPC3925_Upstream_Power_Level implements \PhuninNode\Interfaces\Plugi
             $deferredResolver->resolve($values);
         });
         $this->fetchModemStatusValue($deferred->resolver(), self::STATUS_TABLE, self::STATUS_COLUMN);
-    }
-    
-    private function fetchModemStatusValue(\React\Promise\DeferredResolver $deferredResolver, $table, $column) {
-        $deferred = new \React\Promise\Deferred();
-        $deferred->promise()->then(function($html) use ($deferredResolver, $table, $column) {
-            $channelValues = array();
-            
-            $dom = new DOMDocument();
-            @$dom->loadHTML($html);
-            $xpath = new DOMXPath($dom);
-            
-            $i = 0;
-            $rows = $xpath->query('.//tr[position()>1]', $xpath->query('//table[contains(@class, \'std\')]')->item($table));
-            foreach ($rows as $row) {
-                $channelValues['channel' . ++$i] = (float) $xpath->query('.//td[' . $column . ']', $row)->item(0)->textContent;
-            }
-            
-            $deferredResolver->resolve($channelValues);
-        });
-        $this->fetchModemStatusUrl($deferred->resolver());
-    }
-    
-    private function fetchModemStatusUrl(\React\Promise\DeferredResolver $deferredResolver) {
-        $client = $this->factory->create($this->loop, $this->dnsResolver);
-        
-        $request = $client->request('GET', self::CISCO_EPC3925_STATUS_URL);
-        $request->on('response', function ($response) use ($deferredResolver) {
-            $dataBuffer = new stdClass();
-            $response->on('data', function ($data) use ($dataBuffer) {
-                $dataBuffer->buffer .= $data;
-            });
-            $response->on('end', function () use ($dataBuffer , $deferredResolver) {
-                $deferredResolver->resolve($dataBuffer->buffer);
-            });
-        });
-        $request->end();
     }
     
 }
